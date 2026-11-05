@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wikipedia Pulse</title>
+  <meta name="description" content="What India is reading on Wikipedia, hour by hour, across English and 13 Indian languages. A Databricks lakehouse project by Lokesh Reddy Maddali.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%230e6b66'/><path d='M12 38h10l5-14 8 24 6-16 3 6h8' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e8ecef; --surface: #f6f8f9; --ink: #1b2733; --muted: #55636f; --line: #c9d2d9;
+      --accent: #0e6b66; --accent-ink: #ffffff; --accent-soft: #d5e7e4;
+      --display: "Bricolage Grotesque", "Segoe UI", sans-serif;
+      --body: "Public Sans", "Segoe UI", "Nirmala UI", "Noto Sans", sans-serif;
+      --script: "Nirmala UI", "Noto Sans", "Noto Sans Devanagari", "Noto Sans Tamil", "Noto Sans Telugu", "Public Sans", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #121a21; --surface: #1a242d; --ink: #e6ecf0; --muted: #9aa8b4; --line: #2c3a46;
+        --accent: #4fb8ae; --accent-ink: #0d1a1f; --accent-soft: #1d3a3a;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #121a21; --surface: #1a242d; --ink: #e6ecf0; --muted: #9aa8b4; --line: #2c3a46;
+      --accent: #4fb8ae; --accent-ink: #0d1a1f; --accent-soft: #1d3a3a;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--body); -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+    @media (max-width: 520px) { .wrap { padding: 0 16px; } }
+    h1, h2 { font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+    .num { font-variant-numeric: tabular-nums; }
+    .script { font-family: var(--script); }
+
+    .top { padding: 20px 0; }
+    .top .wrap { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .brand { font-family: var(--display); font-weight: 700; font-size: 1.1rem; color: var(--ink); text-decoration: none; }
+    .top nav { display: flex; gap: 20px; font-size: .95rem; }
+    .top nav a { color: var(--ink); text-decoration: none; }
+    .top nav a:hover { color: var(--accent); }
+
+    .intro { padding: 28px 0 28px; }
+    h1 { font-size: clamp(2.2rem, 5vw, 3.8rem); line-height: 1; max-width: 14em; text-wrap: balance; }
+    .intro p { color: var(--muted); font-size: 1.08rem; max-width: 40em; margin: 18px 0 0; }
+    .intro p b { color: var(--ink); font-weight: 600; }
+    .status { display: inline-flex; align-items: flex-start; gap: 10px; margin-top: 18px; font-weight: 600; font-size: .95rem; }
+    .status i { flex: none; width: 10px; height: 10px; margin-top: .45em; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+
+    /* Language tabs */
+    .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 14px; margin: 18px 0 0; scrollbar-width: thin; }
+    .tab {
+      flex: none; font: inherit; cursor: pointer; text-align: left; color: var(--ink);
+      background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 14px 7px;
+    }
+    .tab b { display: block; font-family: var(--script); font-weight: 600; font-size: 1.05rem; line-height: 1.3; }
+    .tab span { display: block; font-size: .78rem; color: var(--muted); }
+    .tab:hover { border-color: var(--accent); }
+    .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .tab[aria-selected="true"] span { color: var(--accent-ink); opacity: .85; }
+
+    /* Main panels */
+    .panels { display: grid; grid-template-columns: 7fr 5fr; gap: 24px; padding: 8px 0 64px; }
+    @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
+    @media (max-width: 520px) { .panel { padding: 20px 18px; } }
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 24px; min-width: 0; }
+    .panel h2 { font-size: 1.45rem; }
+    .panel .sub { color: var(--muted); font-size: .9rem; margin: 4px 0 18px; }
+
+    .trend { list-style: none; margin: 0; padding: 0; }
+    .trend li { display: grid; grid-template-columns: 92px 1fr; gap: 16px; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--line); }
+    .trend li:first-child { border-top: 0; padding-top: 4px; }
+    .ratio { font-family: var(--display); font-weight: 800; font-size: 2.1rem; line-height: 1; color: var(--accent); font-variation-settings: "opsz" 96; }
+    .ratio small { font-size: .5em; font-weight: 700; margin-left: 2px; }
+    .page { font-family: var(--script); font-weight: 600; font-size: 1.08rem; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+    .page:hover { color: var(--accent); text-decoration: underline; }
+    .meta { color: var(--muted); font-size: .88rem; margin-top: 2px; }
+    @media (max-width: 420px) { .trend li { grid-template-columns: 70px 1fr; gap: 12px; } .ratio { font-size: 1.7rem; } }
+
+    .top10 { margin: 0; padding: 0 0 0 2.2em; }
+    .top10 li { padding: 9px 0; border-top: 1px solid var(--line); }
+    .top10 li:first-child { border-top: 0; padding-top: 0; }
+    .top10 li::marker { font-family: var(--display); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .top10 .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .top10 .page { font-size: 1rem; font-weight: 500; }
+    .top10 .views { color: var(--muted); font-size: .88rem; white-space: nowrap; }
+
+    .empty { color: var(--muted); margin: 6px 0 0; }
+    .trend li.empty, .top10 li.empty { display: block; list-style: none; }
+    .top10 li.empty { margin-left: -2.2em; }
+
+    /* Languages */
+    section { border-top: 1px solid var(--line); padding: 56px 0; }
+    section > .wrap > h2 { font-size: clamp(1.7rem, 3.4vw, 2.4rem); }
+    section > .wrap > p { color: var(--muted); max-width: 40em; margin: 8px 0 26px; }
+    .langs { width: 100%; border-collapse: collapse; }
+    .langs th { text-align: left; font-weight: 600; font-size: .85rem; color: var(--muted); padding: 0 12px 10px 0; }
+    .langs td { padding: 10px 12px 10px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+    .langs .r { text-align: right; }
+    .langs button { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: var(--ink); }
+    .langs button b { font-family: var(--script); font-weight: 600; font-size: 1.05rem; }
+    .langs button span { color: var(--muted); font-size: .85rem; margin-left: 8px; }
+    .langs button:hover b { color: var(--accent); }
+    .langs svg { width: 160px; height: 30px; display: block; }
+    .langs polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+    @media (max-width: 640px) { .langs .spark, .langs .mob { display: none; } }
+
+    /* How it works */
+    .flow { list-style: none; margin: 0 0 22px; padding: 0; display: flex; }
+    .flow li { display: flex; align-items: center; flex: 1 1 0; min-width: 0; }
+    .flow li + li::before { content: ""; flex: 0 0 14px; height: 2px; background: var(--accent); }
+    .flow span { display: block; width: 100%; height: 100%; padding: 8px 10px; border-radius: 8px; font-size: .86rem; line-height: 1.25;
+      background: var(--surface); border: 1.5px solid var(--line); font-weight: 600; }
+    .flow span small { display: block; font-weight: 400; color: var(--muted); font-size: .76rem; }
+    .flow li:last-child span { border-color: var(--accent); }
+    @media (max-width: 640px) {
+      .flow { flex-direction: column; }
+      .flow li { flex-direction: column; align-items: flex-start; }
+      .flow li + li::before { flex-basis: 14px; width: 2px; height: 14px; margin-left: 18px; }
+    }
+    .how { color: var(--muted); max-width: 44em; }
+    footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--muted); font-size: .88rem; }
+  </style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./">Wikipedia Pulse</a>
+    <nav aria-label="Links">
+      <a href="https://lokesh4561.github.io/">Portfolio</a>
+      <a href="https://github.com/Lokesh4561/wikipedia-pulse">Code</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="intro">
+    <div class="wrap">
+      <h1>What India is reading on Wikipedia</h1>
+      <p>Hour by hour, across <b>English and 13 Indian languages</b>. A page is <b>trending</b> when it gets at least
+        5 times its usual hourly views. Built on a Databricks lakehouse that processes every Wikipedia page view in the world.</p>
+      <div class="status" id="status"><i aria-hidden="true"></i><span>Loading the latest hour…</span></div>
+
+      <div class="tabs" role="tablist" aria-label="Language" id="tabs"></div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="panels">
+      <div class="panel" role="tabpanel" id="panel-trending" aria-labelledby="trend-title">
+        <h2 id="trend-title">Suddenly popular</h2>
+        <p class="sub" id="trend-sub">Pages with the biggest jump over their 24-hour average, last 6 hours.</p>
+        <ol class="trend" id="trend"></ol>
+      </div>
+      <div class="panel" aria-labelledby="top-title">
+        <h2 id="top-title">Most read this hour</h2>
+        <p class="sub" id="top-sub"></p>
+        <ol class="top10" id="top"></ol>
+      </div>
+    </div>
+  </div>
+
+  <section aria-labelledby="langs-title">
+    <div class="wrap">
+      <h2 id="langs-title">Readers by language</h2>
+      <p>Wikipedia page views in the last 24 hours. Select a language to see what its readers are looking at.</p>
+      <table class="langs">
+        <thead><tr><th>Language</th><th class="spark">Last 24 hours</th><th class="r">Views</th><th class="r mob">On mobile</th></tr></thead>
+        <tbody id="langs"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="how-title">
+    <div class="wrap">
+      <h2 id="how-title">How it works</h2>
+      <p>Every hour, this pipeline runs by itself from Wikimedia's public data to this page.</p>
+      <ol class="flow" aria-label="Pipeline stages">
+        <li><span>Wikimedia<small>hourly dumps</small></span></li>
+        <li><span>GitHub Actions<small>lands files</small></span></li>
+        <li><span>Bronze<small>Auto Loader</small></span></li>
+        <li><span>Silver<small>parsed + checked</small></span></li>
+        <li><span>Gold<small>trends + spikes</small></span></li>
+        <li><span>This page<small>hourly export</small></span></li>
+      </ol>
+      <p class="how" id="how-stats">Delta Lake tables on Databricks, orchestrated by a Databricks Workflow on serverless compute.
+        The code, design notes and tests are on <a href="https://github.com/Lokesh4561/wikipedia-pulse">GitHub</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Built by <a href="https://lokesh4561.github.io/">Lokesh Reddy Maddali</a>. Data: Wikimedia pageview dumps (CC0). Times are in IST.</div>
+</footer>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const fmt = n => n == null ? "–" : n.toLocaleString("en-IN");
+  const short = n => n >= 1e7 ? (n / 1e7).toFixed(1) + " crore" : n >= 1e5 ? (n / 1e5).toFixed(1) + " lakh" : fmt(n);
+  const ist = iso => new Date(iso).toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+  const istDay = iso => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+  const title = t => { let s = t; try { s = decodeURIComponent(t); } catch (e) {} return s.replace(/_/g, " "); };
+  const url = (code, t) => `https://${code}.wikipedia.org/wiki/${encodeURIComponent(t)}`;
+  const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+
+  let data, current = "en";
+  try { const saved = localStorage.getItem("wp-lang"); if (saved) current = saved; } catch (e) {}
+
+  function select(code, focus) {
+    current = code;
+    try { localStorage.setItem("wp-lang", code); } catch (e) {}
+    const lang = data.languages.find(l => l.code === code) || data.languages[0];
+    document.querySelectorAll(".tab").forEach(t => {
+      const on = t.dataset.code === lang.code;
+      t.setAttribute("aria-selected", on); t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+    });
+    $("panel-trending").setAttribute("aria-labelledby", "tab-" + lang.code);
+
+    const trend = data.trending[lang.code] || [];
+    $("trend").replaceChildren(...trend.map(p => el("li", {},
+      el("div", { className: "ratio num" }, String(Math.round(p.ratio)), el("small", {}, "×")),
+      el("div", {},
+        el("a", { className: "page", href: url(lang.code, p.page), target: "_blank", rel: "noopener", dir: "auto" }, title(p.page)),
+        el("div", { className: "meta num" }, `${fmt(p.views)} views at ${ist(p.hour)}, usually about ${fmt(Math.round(p.baseline))} an hour`)))));
+    if (!trend.length) $("trend").replaceChildren(el("li", { className: "empty" },
+      `Nothing is unusually popular in ${lang.name} right now. Check back next hour, or try another language.`));
+
+    const top = data.top[lang.code] || [];
+    $("top-sub").textContent = `${lang.name} Wikipedia, ${ist(data.latest_hour)} IST.`;
+    $("top").replaceChildren(...top.map(p => el("li", {}, el("div", { className: "row" },
+      el("a", { className: "page", href: url(lang.code, p.page), target: "_blank", rel: "noopener", dir: "auto" }, title(p.page)),
+      el("span", { className: "views num" }, fmt(p.views))))));
+    if (!top.length) $("top").replaceChildren(el("li", { className: "empty" }, "No pages for this hour yet."));
+  }
+
+  function render() {
+    const hours = data.stats.hours_total;
+    $("status").lastChild.textContent =
+      `Latest hour ${ist(data.latest_hour)} IST, ${istDay(data.latest_hour)}. ${short(data.stats.rows_24h)} page-view rows processed in the last 24 hours.`;
+
+    if (!data.languages.some(l => l.code === current)) current = data.languages[0].code;
+    $("tabs").replaceChildren(...data.languages.map(l => {
+      const t = el("button", { className: "tab", id: "tab-" + l.code, type: "button", onclick: () => select(l.code) },
+        el("b", { lang: l.code }, l.native), el("span", {}, l.code === "en" ? "All readers" : l.name));
+      t.setAttribute("role", "tab"); t.setAttribute("aria-controls", "panel-trending"); t.dataset.code = l.code;
+      return t;
+    }));
+    $("tabs").addEventListener("keydown", e => {
+      if (!["ArrowRight", "ArrowLeft"].includes(e.key)) return;
+      const codes = data.languages.map(l => l.code), i = codes.indexOf(current);
+      select(codes[(i + (e.key === "ArrowRight" ? 1 : codes.length - 1)) % codes.length], true);
+      e.preventDefault();
+    });
+
+    $("langs").replaceChildren(...data.languages.map(l => {
+      const vals = l.series.map(v => v ?? null), pts = vals.filter(v => v != null);
+      const lo = Math.min(...pts), hi = Math.max(...pts), span = Math.max(hi - lo, 1);
+      const line = vals.map((v, i) => v == null ? null : `${(i / 23 * 100).toFixed(1)},${(28 - (v - lo) / span * 26).toFixed(1)}`).filter(Boolean).join(" ");
+      return el("tr", {},
+        el("td", {}, el("button", { type: "button", onclick: () => { select(l.code); window.scrollTo({ top: 0, behavior: "smooth" }); } },
+          el("b", { lang: l.code }, l.native), el("span", {}, l.code === "en" ? "" : l.name))),
+        el("td", { className: "spark" }, (() => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          s.setAttribute("viewBox", "0 0 100 30"); s.setAttribute("preserveAspectRatio", "none"); s.setAttribute("aria-hidden", "true");
+          const p = document.createElementNS("http://www.w3.org/2000/svg", "polyline"); p.setAttribute("points", line); s.append(p); return s; })()),
+        el("td", { className: "r num" }, short(l.views_24h)),
+        el("td", { className: "r num mob" }, Math.round(l.mobile_share * 100) + "%"));
+    }));
+
+    $("how-stats").prepend(`${hours} hours of history so far, since ${istDay(data.stats.first_hour)}. `);
+    select(current);
+  }
+
+  fetch("data.json", { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => { data = d; render(); })
+    .catch(err => {
+      console.error(err);
+      $("status").lastChild.textContent = "The latest data could not load. Refresh the page in a minute.";
+      $("trend").replaceChildren(el("li", { className: "empty" }, "No data loaded."));
+    });
+})();
+</script>
+</body>
+</html>

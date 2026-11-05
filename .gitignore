@@ -3,3 +3,4 @@ __pycache__/
 .env
 *.gz
 .databricks/
+dashboard/data.json

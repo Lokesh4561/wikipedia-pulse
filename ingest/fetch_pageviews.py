@@ -8,7 +8,7 @@ Idempotent: files already in the volume are skipped, and hours not yet published
 skipped and retried on the next run.
 
 Usage:
-    python -m ingest.fetch_pageviews --hours 6
+    python -m ingest.fetch_pageviews --hours 48
 Environment:
     DATABRICKS_HOST   e.g. https://dbc-xxxx.cloud.databricks.com
     DATABRICKS_TOKEN  personal access token
@@ -78,6 +78,11 @@ class Volume:
         )
         resp.raise_for_status()
 
+    def download(self, path: str) -> bytes:
+        resp = self.session.get(f"{self.base}/files{quote(path)}", timeout=120)
+        resp.raise_for_status()
+        return resp.content
+
 
 def download(url: str, retries: int = 4) -> bytes | None:
     """Download a file; None if it is not published yet. Retries on network errors, 429 and 5xx."""
@@ -101,7 +106,7 @@ def download(url: str, retries: int = 4) -> bytes | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--hours", type=int, default=6, help="how many recent hours to check")
+    parser.add_argument("--hours", type=int, default=48, help="how many recent hours to check (self-heals gaps)")
     args = parser.parse_args()
 
     host, token = os.getenv("DATABRICKS_HOST", "").strip(), os.getenv("DATABRICKS_TOKEN", "").strip()

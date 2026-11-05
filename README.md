@@ -3,18 +3,21 @@
 A lakehouse on **Databricks** that tracks what India and the world read on Wikipedia, hour by hour.
 It processes Wikimedia's public hourly pageview files: **~4.4 million rows every hour, 100+ million a day**.
 
+**Live dashboard:** https://lokesh4561.github.io/wikipedia-pulse/
+
 ## Architecture
 
 ```
 Wikimedia hourly dumps
-        │  GitHub Actions, hourly (:37)
+        │  GitHub Actions, twice an hour (48-hour self-healing lookback)
         ▼
 Unity Catalog volume  /Volumes/workspace/wiki_pulse/landing/pageviews/date=YYYY-MM-DD/
         │  Databricks Workflow "wiki_pulse_hourly" (serverless, hourly)
         ▼
- bronze_pageviews ──► silver_pageviews ──► gold_language_hourly
- (raw lines,          (parsed + typed,       gold_top_pages_hourly
-  Auto Loader)         rejects table)        (incremental rebuild)
+ bronze ──► silver ──► gold (languages, top pages) ──► trending (spikes) ──► export (JSON)
+                                                                                 │  GitHub Actions, hourly
+                                                                                 ▼
+                                                              Dashboard on GitHub Pages
 ```
 
 | Layer | Table | What it holds |
@@ -24,6 +27,7 @@ Unity Catalog volume  /Volumes/workspace/wiki_pulse/landing/pageviews/date=YYYY-
 | Silver | `silver_rejects` | Malformed lines with a reason, instead of failing the job. |
 | Gold | `gold_language_hourly` | Views per language per hour, mobile share, Indian languages flagged. |
 | Gold | `gold_top_pages_hourly` | Top 25 articles per hour for English and 13 Indian languages. |
+| Gold | `gold_trending_hourly` | Pages reading at 5x or more their 24-hour average (spike detection). |
 
 ## Engineering highlights
 
@@ -36,7 +40,13 @@ Unity Catalog volume  /Volumes/workspace/wiki_pulse/landing/pageviews/date=YYYY-
   micro-batch is never double counted.
 - **Data quality:** malformed lines are quarantined in `silver_rejects`; non-article pages
   (main pages, `Special:`, `File:`, `Category:`) are excluded from rankings.
-- **Orchestration:** a Databricks Workflow runs bronze → silver → gold every hour on serverless compute.
+- **Orchestration:** a Databricks Workflow runs bronze → silver → gold → trending → export every hour on serverless compute.
+- **Self-healing ingestion:** GitHub scheduled runs can be delayed or skipped, so every run re-checks
+  the last 48 hours and fills any gap; trending re-scores the 24 hours after a late-arriving hour.
+- **Spike detection:** candidate pages are filtered first, so only a few thousand pages need their
+  24-hour history looked up instead of millions.
+- **Zero-cost dashboard:** an `export` task writes a small JSON snapshot of the gold tables; GitHub Actions
+  downloads it and publishes a static page with GitHub Pages, so viewers never wake up Databricks compute.
 - **CI:** ruff + pytest on every push.
 
 ## First findings
@@ -53,6 +63,12 @@ notebooks/00_setup.sql         # schema and volumes
 notebooks/01_bronze.py         # Auto Loader -> bronze
 notebooks/02_silver.py         # parse, validate, quarantine -> silver
 notebooks/03_gold.py           # incremental gold tables
+notebooks/04_trending.py       # spike detection (5x the 24-hour average)
+notebooks/05_data_checks.py    # is every hour present at every layer?
+notebooks/06_export.py         # JSON snapshot for the dashboard
+ingest/fetch_export.py         # downloads the snapshot (runs in GitHub Actions)
+dashboard/index.html           # the static dashboard
+.github/workflows/publish.yml  # hourly dashboard publish to GitHub Pages
 .github/workflows/ingest.yml   # hourly ingestion
 .github/workflows/ci.yml       # lint + tests
 ```
@@ -69,8 +85,7 @@ python -m ingest.fetch_pageviews --hours 3
 
 ## Roadmap
 
-- Spike detection: pages trending far above their 24-hour baseline
-- Live dashboard
+- Bot filter: flag spikes that look automated (one hour only, desktop only)
 - Real-time stream of Wikipedia edits with Spark Structured Streaming
 - Deploy the job with Databricks Asset Bundles
 
