@@ -80,6 +80,11 @@
     .page { font-family: var(--script); font-weight: 600; font-size: 1.08rem; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
     .page:hover { color: var(--accent); text-decoration: underline; }
     .meta { color: var(--muted); font-size: .88rem; margin-top: 2px; }
+    .why { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft);
+           border-radius: 0 10px 10px 0; font-size: .93rem; line-height: 1.45; }
+    .why b { font-weight: 600; }
+    .why a { font-size: .82rem; white-space: nowrap; }
+    .ai-note { color: var(--muted); font-size: .8rem; margin: 14px 0 0; }
     @media (max-width: 420px) { .trend li { grid-template-columns: 70px 1fr; gap: 12px; } .ratio { font-size: 1.7rem; } }
 
     .top10 { margin: 0; padding: 0 0 0 2.2em; }
@@ -154,8 +159,9 @@
     <div class="panels">
       <div class="panel" role="tabpanel" id="panel-trending" aria-labelledby="trend-title">
         <h2 id="trend-title">Suddenly popular</h2>
-        <p class="sub" id="trend-sub">Pages with the biggest jump over their 24-hour average, last 6 hours.</p>
+        <p class="sub" id="trend-sub">Pages with the biggest jump over their 24-hour average, last 6 hours, and why.</p>
         <ol class="trend" id="trend"></ol>
+        <p class="ai-note" id="ai-note" hidden>Reasons are written by AI (Gemini) from news headlines and Wikipedia edit history, and shown only when they cite a source. They can be wrong.</p>
       </div>
       <div class="panel" aria-labelledby="top-title">
         <h2 id="top-title">Most read this hour</h2>
@@ -186,6 +192,7 @@
         <li><span>Bronze<small>Auto Loader</small></span></li>
         <li><span>Silver<small>parsed + checked</small></span></li>
         <li><span>Gold<small>trends + spikes</small></span></li>
+        <li><span>AI reasons<small>Gemini + news</small></span></li>
         <li><span>This page<small>hourly export</small></span></li>
       </ol>
       <p class="how" id="how-stats">Delta Lake tables on Databricks, orchestrated by a Databricks Workflow on serverless compute.
@@ -209,6 +216,14 @@
   const url = (code, t) => `https://${code}.wikipedia.org/wiki/${encodeURIComponent(t)}`;
   const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
+  const why = (w, code) => {
+    const src = (w.sources || [])[0];
+    const box = el("p", { className: "why" }, el("b", {}, "Why: "), el("span", { lang: code, dir: "auto" }, w.reason));
+    if (code !== "en" && w.reason_en) box.title = w.reason_en;
+    if (src) box.append(" ", el("a", { href: src.url, target: "_blank", rel: "noopener" }, src.url.includes("wikipedia.org") ? "edit history" : "source"));
+    return box;
+  };
+
   let data, current = "en";
   try { const saved = localStorage.getItem("wp-lang"); if (saved) current = saved; } catch (e) {}
 
@@ -228,7 +243,9 @@
       el("div", { className: "ratio num" }, String(Math.round(p.ratio)), el("small", {}, "×")),
       el("div", {},
         el("a", { className: "page", href: url(lang.code, p.page), target: "_blank", rel: "noopener", dir: "auto" }, title(p.page)),
-        el("div", { className: "meta num" }, `${fmt(p.views)} views at ${ist(p.hour)}, usually about ${fmt(Math.round(p.baseline))} an hour`)))));
+        el("div", { className: "meta num" }, `${fmt(p.views)} views at ${ist(p.hour)}, usually about ${fmt(Math.round(p.baseline))} an hour`),
+        p.why ? why(p.why, lang.code) : ""))));
+    $("ai-note").hidden = !trend.some(p => p.why);
     if (!trend.length) $("trend").replaceChildren(el("li", { className: "empty" },
       `Nothing is unusually popular in ${lang.name} right now. Check back next hour, or try another language.`));
 

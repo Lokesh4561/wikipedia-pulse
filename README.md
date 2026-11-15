@@ -55,6 +55,31 @@ Unity Catalog volume  /Volumes/workspace/wiki_pulse/landing/pageviews/date=YYYY-
 - Mobile share varies a lot between Indian languages: Kannada (80%) and Hindi (79%) readers are mostly
   on phones, while Gujarati (28%) and Urdu (34%) readers are mostly on desktop.
 
+## AI: why is India reading this?
+
+Spike detection says *what* is trending; an LLM step explains *why*, in English and in the page's own
+language. It runs in the hourly publish workflow (`explain/`), because Databricks Free Edition cannot
+reach the open internet.
+
+```
+trending pages ─► evidence ─────────────────────────► Gemini (JSON schema) ─► grounding check ─► dashboard
+                  • Wikipedia summary                  category, reason (EN +   keep only answers that
+                  • edit comments, last 72 hours       native language),        cite real news or edit
+                  • news headlines (GDELT, 65+ langs)  confidence, cited ids    evidence
+```
+
+| Design choice | Why |
+|---|---|
+| **Grounded or nothing** | The model may only use numbered evidence and must cite it. Answers that cite nothing real, cite made-up ids, or say "unknown" are stored as *unclear* and not shown. |
+| **Structured output** | A JSON schema (category, reason, confidence, evidence ids), so answers are machine-checkable. |
+| **Cached once per page per day** | Explanations live in the Databricks volume (`exports/explanations.json`), so a page trending for 6 hours costs one LLM call. |
+| **Free-tier aware** | At most 8 new pages per run, every language's #1 first; on HTTP 429 the run stops and retries next hour. Model fallback list if a model is retired. |
+| **Never blocks the pipeline** | The step is `continue-on-error`: if the AI fails, the dashboard still publishes. |
+| **Measurable** | Every answer stores its sources, model, latency and token counts, ready for evaluation. |
+
+Setup: create a free API key in [Google AI Studio](https://aistudio.google.com/apikey) and add it as the
+repository secret `GEMINI_API_KEY`. Optionally set the repository variable `GEMINI_MODEL` (comma-separated).
+
 ## Repository layout
 
 ```
@@ -67,6 +92,7 @@ notebooks/04_trending.py       # spike detection (5x the 24-hour average)
 notebooks/05_data_checks.py    # is every hour present at every layer?
 notebooks/06_export.py         # JSON snapshot for the dashboard
 ingest/fetch_export.py         # downloads the snapshot (runs in GitHub Actions)
+explain/                       # AI step: evidence, Gemini call, grounding check, cache
 dashboard/index.html           # the static dashboard
 .github/workflows/publish.yml  # hourly dashboard publish to GitHub Pages
 .github/workflows/ingest.yml   # hourly ingestion

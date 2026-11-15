@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["dashboard/**", ".github/workflows/publish.yml"]
+    paths: ["dashboard/**", "explain/**", ".github/workflows/publish.yml"]
 
 permissions:
   contents: read
@@ -35,6 +35,14 @@ jobs:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: python -m ingest.fetch_export --out dashboard/data.json
+      - name: Explain why pages are trending (AI)
+        continue-on-error: true   # if the AI step fails, the dashboard is still published
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: python -m explain.run --data dashboard/data.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
