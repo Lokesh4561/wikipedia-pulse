@@ -37,7 +37,9 @@ jobs:
         run: python -m ingest.fetch_export --out dashboard/data.json
       - name: Explain why pages are trending (AI)
         continue-on-error: true   # if the AI step fails, the dashboard is still published
+        timeout-minutes: 7        # hard stop; the script itself stops starting new pages after 4 minutes
         env:
+          PYTHONUNBUFFERED: "1"   # show log lines live
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -26,11 +26,12 @@ def new_session() -> requests.Session:
     return s
 
 
-def _get(session: requests.Session, url: str, params: dict | None = None, retries: int = 3):
+def _get(session: requests.Session, url: str, params: dict | None = None, retries: int = 2,
+         timeout: int = 15):
     """GET with retries on network errors, 429 and 5xx. Returns None for 404."""
     for attempt in range(1, retries + 1):
         try:
-            resp = session.get(url, params=params, timeout=30)
+            resp = session.get(url, params=params, timeout=timeout)
             if resp.status_code == 404:
                 return None
             if resp.status_code == 429 or resp.status_code >= 500:
@@ -40,7 +41,7 @@ def _get(session: requests.Session, url: str, params: dict | None = None, retrie
         except (requests.ConnectionError, requests.Timeout, requests.HTTPError):
             if attempt == retries:
                 raise
-            time.sleep(6 * attempt)
+            time.sleep(3)
     return None
 
 
@@ -104,7 +105,7 @@ def gdelt_news(session, query: str, timespan: str = "3d", max_records: int = 8) 
         resp = _get(session, GDELT_URL, params={
             "query": query, "mode": "ArtList", "format": "json", "maxrecords": max_records,
             "timespan": timespan, "sort": "HybridRel",
-        }, retries=2)
+        }, retries=1, timeout=20)  # news is a bonus: never wait long for it
         _last_gdelt_call = time.monotonic()
         if resp is None:
             return []

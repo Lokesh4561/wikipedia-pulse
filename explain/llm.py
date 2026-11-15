@@ -44,7 +44,7 @@ def generate(session: requests.Session, api_key: str, prompt: str) -> tuple[dict
     for model in models():
         for attempt in (1, 2):
             started = time.monotonic()
-            resp = session.post(API.format(model=model), json=body, headers={"x-goog-api-key": api_key}, timeout=90)
+            resp = session.post(API.format(model=model), json=body, headers={"x-goog-api-key": api_key}, timeout=45)
             if resp.status_code == 404:
                 last_error = f"model {model} not available"
                 break

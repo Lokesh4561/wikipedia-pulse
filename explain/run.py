@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 
 import requests
@@ -161,8 +162,10 @@ def load_cache(volume: Volume) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data", default="dashboard/data.json")
-    parser.add_argument("--max-new", type=int, default=int(os.getenv("EXPLAIN_MAX_NEW", "8")),
+    parser.add_argument("--max-new", type=int, default=int(os.getenv("EXPLAIN_MAX_NEW") or 8),
                         help="LLM calls per run (keeps within the Gemini free tier)")
+    parser.add_argument("--budget-seconds", type=int, default=240,
+                        help="stop starting new pages after this long, so publishing is never delayed")
     args = parser.parse_args()
 
     host, token = os.getenv("DATABRICKS_HOST", "").strip(), os.getenv("DATABRICKS_TOKEN", "").strip()
@@ -182,7 +185,12 @@ def main() -> int:
         print("GEMINI_API_KEY is not set: showing cached explanations only.")
         todo = []
 
-    for lang, p in todo[: args.max_new]:
+    started = time.monotonic()
+    for n, (lang, p) in enumerate(todo[: args.max_new], 1):
+        if time.monotonic() - started > args.budget_seconds:
+            print(f"  time budget of {args.budget_seconds}s used, the rest wait for the next run")
+            break
+        print(f"  [{n}] {lang}:{p['page']} ...")
         try:
             e = explain_page(session, api_key, lang, p, now)
         except llm.QuotaExceeded as exc:
@@ -192,8 +200,10 @@ def main() -> int:
             print(f"  error     {lang}:{p['page']}: {exc}")
             continue
         cache[cache_key(lang, p["page"], p["hour"])] = e
+        volume.upload(CACHE_PATH, json.dumps(cache, ensure_ascii=False).encode("utf-8"))  # keep progress
         print(f"  {e['status']:<9} {lang}:{p['page']} [{e['category']}, {e['confidence']}] "
-              f"{e['reason_en'] or '-'} ({e['model']}, {e['latency_s']}s)")
+              f"{e['reason_en'] or '-'} ({e['model']}, {e['latency_s']}s, news {e['evidence']['news']}, "
+              f"edits {e['evidence']['edits']})")
 
     cache = prune(cache, now)
     volume.upload(CACHE_PATH, json.dumps(cache, ensure_ascii=False).encode("utf-8"))
