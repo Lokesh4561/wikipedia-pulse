@@ -3,21 +3,19 @@
 Three free, key-less sources:
   - Wikipedia page summary (what the page is about)
   - recent edit comments on the page (editors often record the news: "died on ...", "won ...")
-  - news headlines from the GDELT DOC 2.0 API (global news in 65+ languages)
+  - news headlines from Google News RSS (English and Indian-language editions)
 """
 
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
 import requests
 
 USER_AGENT = "wikipedia-pulse/1.0 (https://github.com/Lokesh4561/wikipedia-pulse)"
-GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-GDELT_MIN_INTERVAL = 5.5  # GDELT asks for at most one request every 5 seconds
-
-_last_gdelt_call = 0.0
 
 
 def new_session() -> requests.Session:
@@ -84,34 +82,56 @@ def wiki_recent_edits(session, lang: str, title: str, since: datetime) -> tuple[
 
 
 def news_query(title: str | None) -> str | None:
-    """Turn a page title into a GDELT search phrase: 'Dharmendra_(actor)' -> 'Dharmendra'."""
+    """Turn a page title into a news search phrase: 'Dharmendra_(actor)' -> 'Dharmendra'."""
     if not title:
         return None
     name = re.sub(r"\s*\([^)]*\)", "", title.replace("_", " ")).strip()
     name = re.sub(r"[\"“”]", "", name)
-    if len(name) < 4:  # GDELT rejects very short keywords
+    if len(name) < 3:
         return None
     return f'"{name}"' if " " in name else name
 
 
-def gdelt_news(session, query: str, timespan: str = "3d", max_records: int = 8) -> list[dict]:
-    """Recent news headlines matching `query`. Returns [] when GDELT has nothing or misbehaves."""
-    global _last_gdelt_call
-    wait = GDELT_MIN_INTERVAL - (time.monotonic() - _last_gdelt_call)
-    if wait > 0:
-        time.sleep(wait)
-    _last_gdelt_call = time.monotonic()
+GOOGLE_NEWS_URL = "https://news.google.com/rss/search"
+# Google News editions for India; languages without one fall back to English news
+NEWS_EDITIONS = {"en": "en", "hi": "hi", "bn": "bn", "te": "te", "mr": "mr", "ta": "ta", "ml": "ml",
+                 "gu": "gu", "kn": "kn", "pa": "pa", "ur": "ur"}
+
+
+def parse_rss(xml_text: str, limit: int = 8) -> list[dict]:
+    """Headlines from a Google News RSS feed (pure function, unit-tested)."""
     try:
-        resp = _get(session, GDELT_URL, params={
-            "query": query, "mode": "ArtList", "format": "json", "maxrecords": max_records,
-            "timespan": timespan, "sort": "HybridRel",
-        }, retries=1, timeout=20)  # news is a bonus: never wait long for it
-        _last_gdelt_call = time.monotonic()
-        if resp is None:
-            return []
-        articles = resp.json().get("articles", [])  # GDELT returns plain text, not JSON, for bad queries
-    except (ValueError, requests.RequestException) as exc:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    items = []
+    for item in root.iter("item"):
+        title = (item.findtext("title") or "").strip()
+        source = item.find("source")
+        publisher = source.text.strip() if source is not None and source.text else ""
+        if publisher and title.endswith(" - " + publisher):  # Google appends " - Publisher" to titles
+            title = title[: -len(publisher) - 3]
+        try:
+            date = parsedate_to_datetime(item.findtext("pubDate") or "").strftime("%Y%m%d")
+        except (TypeError, ValueError):
+            date = ""
+        if title:
+            items.append({"title": title, "url": (item.findtext("link") or "").strip(),
+                          "domain": publisher, "date": date})
+        if len(items) >= limit:
+            break
+    return items
+
+
+def news_headlines(session, query: str, lang: str = "en", days: int = 3, limit: int = 8) -> list[dict]:
+    """Recent news headlines from Google News (free, no key). Returns [] on any problem."""
+    edition = NEWS_EDITIONS.get(lang, "en")
+    try:
+        resp = _get(session, GOOGLE_NEWS_URL, params={
+            "q": f"{query} when:{days}d", "hl": f"{edition}-IN" if edition == "en" else edition,
+            "gl": "IN", "ceid": f"IN:{edition}",
+        }, retries=1, timeout=15)
+    except requests.RequestException as exc:
         print(f"    news lookup failed for {query}: {exc}")
         return []
-    return [{"title": a.get("title", "").strip(), "url": a.get("url", ""), "domain": a.get("domain", ""),
-             "date": a.get("seendate", "")[:8]} for a in articles if a.get("title")]
+    return parse_rss(resp.text, limit) if resp is not None else []

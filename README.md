@@ -65,7 +65,7 @@ reach the open internet.
 trending pages ─► evidence ─────────────────────────► Gemini (JSON schema) ─► grounding check ─► dashboard
                   • Wikipedia summary                  category, reason (EN +   keep only answers that
                   • edit comments, last 72 hours       native language),        cite real news or edit
-                  • news headlines (GDELT, 65+ langs)  confidence, cited ids    evidence
+                  • news headlines (Google News)       confidence, cited ids    evidence
 ```
 
 | Design choice | Why |

@@ -29,7 +29,7 @@ CACHE_PATH = "/Volumes/workspace/wiki_pulse/exports/explanations.json"
 TOP_PER_LANGUAGE = 5   # only explain each language's top trending pages
 KEEP_DAYS = 30
 EVIDENCE_HOURS = 72    # how far back to look for edits and news
-MAX_EDITS, MAX_NEWS = 8, 8
+MAX_EDITS, MAX_NEWS = 8, 10
 
 LANGUAGE_NAMES = {
     "en": "English", "hi": "Hindi", "bn": "Bengali", "te": "Telugu", "mr": "Marathi", "ta": "Tamil",
@@ -119,8 +119,13 @@ def explain_page(session, api_key: str, lang: str, p: dict, now: datetime) -> di
     since = now - timedelta(hours=EVIDENCE_HOURS)
     summary = sources.wiki_summary(session, lang, p["page"])
     edits, en_title = sources.wiki_recent_edits(session, lang, p["page"], since)
+    # English news about the English title, plus news in the page's own language about its own title
     query = sources.news_query(en_title or p["page"])
-    news = sources.gdelt_news(session, query) if query else []
+    news = sources.news_headlines(session, query, "en") if query else []
+    native_query = sources.news_query(p["page"]) if lang != "en" else None
+    if native_query:
+        seen = {n["title"] for n in news}
+        news += [n for n in sources.news_headlines(session, native_query, lang, limit=4) if n["title"] not in seen]
     evidence = build_evidence(summary, edits, news, lang, p["page"])
     answer, meta = llm.generate(session, api_key, build_prompt(lang, p, evidence))
     return {

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from explain import llm
 from explain.run import attach, build_evidence, build_prompt, cache_key, candidates, ground, prune
-from explain.sources import news_query
+from explain.sources import news_query, parse_rss
 
 NOW = datetime(2026, 11, 15, 6, 0, tzinfo=UTC)
 
@@ -110,3 +110,46 @@ def test_generate_skips_unavailable_model_and_reads_json(monkeypatch):
 
     out, meta = llm.generate(Session(), "key", "prompt")
     assert out["category"] == "sports" and meta["model"] == "good-model" and meta["tokens_in"] == 900
+
+
+RSS = """<?xml version="1.0"?><rss><channel>
+<item><title>Shubman Gill hits century in Kolkata Test - The Hindu</title>
+<link>https://news.google.com/rss/articles/abc</link><pubDate>Sat, 14 Nov 2026 10:00:00 GMT</pubDate>
+<source url="https://www.thehindu.com">The Hindu</source></item>
+<item><title>Second headline</title><link>https://n/2</link><pubDate>bad date</pubDate></item>
+</channel></rss>"""
+
+
+def test_parse_rss_strips_publisher_and_reads_dates():
+    items = parse_rss(RSS)
+    assert items[0] == {"title": "Shubman Gill hits century in Kolkata Test", "url": "https://news.google.com/rss/articles/abc",
+                        "domain": "The Hindu", "date": "20261114"}
+    assert items[1]["date"] == "" and len(parse_rss(RSS, limit=1)) == 1
+    assert parse_rss("not xml") == []
+
+
+def test_generate_turns_off_thinking_and_skips_slow_model(monkeypatch):
+    import requests
+
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-flash-lite,gemini-2.5-flash")
+    answer = '{"category":"other","reason_en":"r","reason_native":"r","confidence":"medium","evidence_ids":[]}'
+    sent = []
+
+    class Resp:
+        status_code, text = 200, ""
+
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": answer}]}}]}
+
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        def post(self, url, json, **kw):
+            sent.append(json["generationConfig"].get("thinkingConfig"))
+            if "lite" in url:
+                raise requests.Timeout("slow")
+            return Resp()
+
+    out, meta = llm.generate(Session(), "key", "prompt")
+    assert meta["model"] == "gemini-2.5-flash" and sent == [{"thinkingBudget": 0}, {"thinkingBudget": 0}]
