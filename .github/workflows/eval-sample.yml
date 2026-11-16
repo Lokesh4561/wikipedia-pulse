@@ -1,0 +1,29 @@
+name: AI evaluation sample
+
+# Manual only: exports a sample of AI explanations as a spreadsheet to label by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: "How many explanations to sample"
+        default: "50"
+
+jobs:
+  sample:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Export a sample of AI explanations
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: python -m explain.evaluate sample --n "${{ github.event.inputs.n || '50' }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-sample
+          path: evals/

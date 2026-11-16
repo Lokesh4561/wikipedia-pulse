@@ -77,6 +77,8 @@ trending pages ─► evidence ────────────────�
 | **Never blocks the pipeline** | The step is `continue-on-error`: if the AI fails, the dashboard still publishes. |
 | **Measurable** | Every answer stores its sources, model, latency and token counts, ready for evaluation. |
 
+How good is it? The answers are checked by hand: see [evals/RESULTS.md](evals/RESULTS.md).
+
 Setup: create a free API key in [Google AI Studio](https://aistudio.google.com/apikey) and add it as the
 repository secret `GEMINI_API_KEY`. Optionally set the repository variable `GEMINI_MODEL` (comma-separated).
 
@@ -93,6 +95,9 @@ notebooks/05_data_checks.py    # is every hour present at every layer?
 notebooks/06_export.py         # JSON snapshot for the dashboard
 ingest/fetch_export.py         # downloads the snapshot (runs in GitHub Actions)
 explain/                       # AI step: evidence, Gemini call, grounding check, cache
+explain/evaluate.py            # sample AI answers for hand-labelling, then score them
+evals/                         # labels and results (evals/RESULTS.md)
+.github/workflows/eval-sample.yml  # manual: export an evaluation sample
 dashboard/index.html           # the static dashboard
 .github/workflows/publish.yml  # hourly dashboard publish to GitHub Pages
 .github/workflows/ingest.yml   # hourly ingestion

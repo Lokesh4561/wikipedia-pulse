@@ -88,7 +88,8 @@ Rules:
 - If the evidence does not show a clear recent reason, set category "unknown", confidence "low",
   evidence_ids [] and reason_en "No clear reason found in recent news or edits." Never guess from general
   knowledge.
-- reason_en: one plain sentence, at most 25 words, no hype, no "trending because".
+- reason_en: one plain sentence, at most 25 words, that states the event itself, for example
+  "Actor X died on 14 November at 89." Do not mention page views, traffic, readers or popularity.
 - reason_native: the same sentence written in {language}.
 - confidence: "high" only if news or edits state the reason directly."""
 
