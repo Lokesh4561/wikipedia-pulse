@@ -1,0 +1,12 @@
+{
+  "total": 32,
+  "explained": 22,
+  "coverage": 0.688,
+  "hallucinated_citation_rate": 0.0,
+  "latency_p50_s": 0.95,
+  "latency_p95_s": 1.67,
+  "avg_tokens": 747,
+  "languages": 10,
+  "first": "2026-11-15T12:36:21Z",
+  "last": "2026-11-16T02:51:42Z"
+}
